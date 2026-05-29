@@ -3,9 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>4×4 卡诺图 — Q₃Q₂Q₁Q₀</title>
+<title>卡诺图化简工具 — N×M Karnaugh Map</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <link rel="stylesheet" href="style.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script defer src="script.js"></script>
 </head>
 <body>
 
@@ -28,7 +31,23 @@
     </div>
 
     <div class="card">
-      <h3>表达式（KaTeX 渲染）</h3>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:13px;font-weight:600;white-space:nowrap">变量名</span>
+        <div class="varname-row" id="varNameInputs"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <h3 style="margin:0">表达式（KaTeX 渲染）</h3>
+        <select id="varCountSelect" style="margin-left:auto;padding:4px 10px;border-radius:6px;border:1px solid #d4d8e0;font-size:13px;background:#fff;cursor:pointer">
+          <option value="2">2 变量 (2×2)</option>
+          <option value="3">3 变量 (2×4)</option>
+          <option value="4" selected>4 变量 (4×4)</option>
+          <option value="5">5 变量 (2×4×4)</option>
+          <option value="6">6 变量 (4×4×4)</option>
+        </select>
+      </div>
       <div class="katex-display" id="katexDisplay">
         <span class="katex-placeholder">点击自动化简或输入表达式</span>
       </div>
@@ -38,17 +57,16 @@
       <div class="btn-row">
         <button class="btn btn-action" id="btnAutoSimplify">⚡ 自动化简</button>
         <button class="btn btn-secondary" id="btnClearGroups">清除圈选</button>
-        <button class="btn btn-secondary" id="btnClearAll">清空全部</button>
       </div>
     </div>
 
     <div class="card">
       <h3>表达式输入</h3>
-      <div class="btn-row" style="margin-top:0">
-        <button class="btn btn-var ins-btn" data-text="Q3">Q₃</button>
-        <button class="btn btn-var ins-btn" data-text="Q2">Q₂</button>
-        <button class="btn btn-var ins-btn" data-text="Q1">Q₁</button>
-        <button class="btn btn-var ins-btn" data-text="Q0">Q₀</button>
+      <div class="btn-row" style="margin-top:0" id="varButtons">
+        <button class="btn btn-var ins-btn" data-text="A">A</button>
+        <button class="btn btn-var ins-btn" data-text="B">B</button>
+        <button class="btn btn-var ins-btn" data-text="C">C</button>
+        <button class="btn btn-var ins-btn" data-text="D">D</button>
       </div>
       <div class="btn-row">
         <button class="btn btn-not ins-btn" data-text="'">NOT &nbsp;◌̅</button>
@@ -70,7 +88,143 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<script src="script.js"></script>
+<!-- ── Algorithm Modal ──────────────────────────────── -->
+<div class="modal-overlay" id="algoOverlay" onclick="closeAlgoModal(event)">
+  <div class="modal-body" id="algoModal" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="document.getElementById('algoOverlay').classList.remove('show')">&times;</button>
+    <div class="modal-content">
+      <h2>卡诺图自动化简算法</h2>
+
+      <h3>1. 算法目标</h3>
+      <p>本算法用于对用户在卡诺图中设置的逻辑函数进行自动化简。格子状态：<b>1</b>（必须覆盖）、<b>0</b>（不可覆盖）、<b>X</b>（无关项，可覆盖也可不覆盖）。最终目标为 <b>最简与或表达式</b>。</p>
+      <p>主目标为：</p>
+      <p class="formula">\[ \min \sum_{i=1}^{N} x_i \]</p>
+      <p>其中 \(x_i\) 表示第 \(i\) 个合法圈是否被选中，该目标表示最终表达式的 <b>项数最少</b>。</p>
+
+      <h3>2. 基本定义</h3>
+      <p>设卡诺图中共有 \(M\) 个取值为 1 的格子。算法枚举出的所有合法圈为 \(C_1, C_2, \dots, C_N\)。</p>
+      <p>对每个合法圈 \(C_i\)，定义决策变量：</p>
+      <p class="formula">\[ x_i = \begin{cases} 1, & \text{选择第 } i \text{ 个圈} \\ 0, & \text{不选择第 } i \text{ 个圈} \end{cases} \]</p>
+      <p>每个被选中的圈对应最终表达式中的一个乘积项。</p>
+
+      <h3>3. 合法圈枚举</h3>
+      <p>算法首先枚举卡诺图中所有可能的合法圈。合法圈必须满足：</p>
+      <ol>
+        <li>圈的形状为矩形；</li>
+        <li>圈的面积为 \(2^k\)，即 \(1, 2, 4, 8, 16, \dots\)；</li>
+        <li>圈可以跨越卡诺图边界；</li>
+        <li>圈内只能包含 1 或 X；</li>
+        <li>圈内不能包含 0；</li>
+        <li>圈内至少包含一个 1。</li>
+      </ol>
+      <p>非法圈不会进入后续优化模型。</p>
+
+      <h3>4. 合法圈信息记录</h3>
+      <p>对于每一个合法圈 \(C_i\)，算法记录：</p>
+      <p class="formula">\[ C_i = \{ \text{cells}_i,\ \text{ones}_i,\ S_i,\ L_i \} \]</p>
+      <p>其中：\(\text{cells}_i\) 为覆盖的全部格子（含 1 和 X），\(\text{ones}_i\) 为覆盖的所有 1 格，\(S_i\) 为面积，\(L_i\) 为乘积项的文字数。</p>
+      <p>若卡诺图有 \(n\) 个变量，圈面积为 \(S_i\)，则文字数为：</p>
+      <p class="formula">\[ L_i = n - \log_2 S_i \]</p>
+      <p>例如 \(n=4\) 时：</p>
+      <table>
+        <tr><th>圈面积</th><td>1</td><td>2</td><td>4</td><td>8</td><td>16</td></tr>
+        <tr><th>文字数</th><td>4</td><td>3</td><td>2</td><td>1</td><td>0</td></tr>
+      </table>
+
+      <h3>5. 覆盖矩阵构造</h3>
+      <p>设第 \(j\) 个 1 格为 \(m_j\)（\(j = 1, 2, \dots, M\)）。定义覆盖矩阵：</p>
+      <p class="formula">\[ a_{ji} = \begin{cases} 1, & C_i \text{ 覆盖 } m_j \\ 0, & C_i \text{ 不覆盖 } m_j \end{cases} \]</p>
+      <p>覆盖矩阵用于描述每个合法圈能够覆盖哪些必须覆盖的 1 格。实现中使用 <b>BigInt 位掩码</b> 表示每列，加速集合运算。</p>
+
+      <h3>6. 基本覆盖约束</h3>
+      <p>每一个取值为 1 的格子都必须至少被一个选中的合法圈覆盖。对每个 1 格 \(m_j\)：</p>
+      <p class="formula">\[ \sum_{i=1}^{N} a_{ji} \, x_i \geq 1 \]</p>
+
+      <h3>7. 主优化模型</h3>
+      <p>主优化模型为：</p>
+      <p class="formula">\[ \min \sum_{i=1}^{N} x_i \]</p>
+      <p class="formula">\[ \text{s.t.} \quad \sum_{i=1}^{N} a_{ji} \, x_i \geq 1,\quad j = 1, 2, \dots, M \]</p>
+      <p class="formula">\[ x_i \in \{0, 1\},\quad i = 1, 2, \dots, N \]</p>
+      <p>该模型的意义是：在所有能够覆盖全部 1 格的圈组合中，选择圈数最少的组合。求解后得到最少项数：</p>
+      <p class="formula">\[ T_{\min} = \min \sum_{i=1}^{N} x_i \]</p>
+
+      <h3>8. 固定最少项数</h3>
+      <p>得到最少项数 \(T_{\min}\) 后，加入约束：</p>
+      <p class="formula">\[ \sum_{i=1}^{N} x_i = T_{\min} \]</p>
+      <p>该约束表示后续所有优化都必须在 <b>项数最少</b> 的前提下进行。</p>
+
+      <h3>9. 大圈优先规则</h3>
+      <p>大圈优先不作为主目标。算法只在项数已经最少的解中优先选择更大的圈。因为圈越大 → 消去的变量越多 → 乘积项越短。</p>
+      <p>在固定项数最少的前提下，最小化总文字数：</p>
+      <p class="formula">\[ \min \sum_{i=1}^{N} L_i \, x_i \]</p>
+      <p class="formula">\[ \text{s.t.} \quad \sum_{i=1}^{N} a_{ji} \, x_i \geq 1,\quad j = 1, 2, \dots, M \]</p>
+      <p class="formula">\[ \sum_{i=1}^{N} x_i = T_{\min} \]</p>
+      <p class="formula">\[ x_i \in \{0, 1\} \]</p>
+      <p>该步骤保证：项数不增加；优先大圈；不因使用大圈而产生冗余项。</p>
+
+      <h3>10. 冗余圈排除规则</h3>
+      <p>若一个被选中的圈删除后，所有 1 格仍能被其他已选圈覆盖，则该圈为冗余圈。设选中的圈集合为 \(\mathcal{S}\)，若存在 \(C_k \in \mathcal{S}\) 满足：</p>
+      <p class="formula">\[ \bigcup_{C_i \in \mathcal{S},\, i \neq k} \text{ones}_i = \bigcup_{C_i \in \mathcal{S}} \text{ones}_i \]</p>
+      <p>则 \(C_k\) 为冗余圈，应当删除。该步骤作为后处理检查，保证输出结果稳定。</p>
+
+      <h3>11. 最终选择规则</h3>
+      <p>算法的选择优先级为：</p>
+      <p class="formula">\[ \boxed{ \text{覆盖所有 1} \;\rightarrow\; \text{项数最少} \;\rightarrow\; \text{总文字数最少} \;\rightarrow\; \text{去除冗余圈} } \]</p>
+
+      <h3>12. 圈到逻辑项的转换</h3>
+      <p>将选中圈覆盖的所有最小项编号转为二进制，逐位比较：</p>
+      <table>
+        <tr><th>位取值情况</th><th>结果</th></tr>
+        <tr><td>全为 0</td><td>保留反变量</td></tr>
+        <tr><td>全为 1</td><td>保留原变量</td></tr>
+        <tr><td>既有 0 又有 1</td><td>该变量被消去</td></tr>
+      </table>
+      <p>例如 4 变量圈覆盖最小项 \(0011, 0111, 1011, 1111\)：第 1、2 位既有 0 又有 1→消去；第 3、4 位全为 1→保留。乘积项为 \(C \cdot D\)。</p>
+
+      <h3>13. 最终表达式生成</h3>
+      <p>设最终选中的圈集合为 \(\mathcal{S} = \{C_{p_1}, C_{p_2}, \dots, C_{p_t}\}\)，每个圈转换得乘积项 \(P_1, P_2, \dots, P_t\)，最终表达式：</p>
+      <p class="formula">\[ F = P_1 + P_2 + \cdots + P_t \]</p>
+      <p>其中 \(t = T_{\min}\)，即最终表达式的项数等于最小项数。</p>
+
+      <h3>14. 完整算法流程</h3>
+      <p class="formula">\[
+      \begin{array}{c}
+      \text{输入卡诺图状态 (0/1/X)} \\
+      \downarrow \\
+      \text{提取所有 1 格和 X 格} \\
+      \downarrow \\
+      \text{枚举所有合法圈} \\
+      \downarrow \\
+      \text{删除非法圈和重复圈} \\
+      \downarrow \\
+      \text{构造覆盖矩阵 } \mathbf{A} \\
+      \downarrow \\
+      \text{以项数最少为主目标求解} \\
+      \downarrow \\
+      \text{得到最少项数 } T_{\min} \\
+      \downarrow \\
+      \text{加入约束 } \sum x_i = T_{\min} \\
+      \downarrow \\
+      \text{最小化总文字数} \\
+      \downarrow \\
+      \text{检查并删除冗余圈} \\
+      \downarrow \\
+      \text{圈 → 逻辑乘积项} \\
+      \downarrow \\
+      \text{输出最简与或表达式}
+      \end{array}
+      \]</p>
+
+      <h3>15. 算法本质</h3>
+      <p>该算法本质上是一个基于卡诺图合法圈枚举的 <b>0-1 整数规划覆盖算法</b>。核心模型：</p>
+      <p class="formula">\[ \boxed{ \min \sum_{i=1}^{N} x_i } \quad \boxed{ \sum_{i=1}^{N} a_{ji} \, x_i \geq 1 } \quad \boxed{ x_i \in \{0, 1\} } \]</p>
+      <p>在主目标求得最少项数后，再通过 \(\min \sum L_i x_i\) 实现项数最少前提下的大圈优先。</p>
+
+      <hr style="border:none;border-top:1px solid #e2e5ea;margin:20px 0">
+      <p style="color:#9aa0b0;font-size:12px;text-align:center">算法：qianyuyingluo &emsp; 编程：DeepSeek-V4-Pro</p>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
