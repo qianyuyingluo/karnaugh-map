@@ -1,0 +1,12 @@
+{
+  "name": "karnaugh-map",
+  "version": "1.0.0",
+  "description": "4×4 Karnaugh Map Tool with KaTeX rendering",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}
